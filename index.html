@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Diet Goal Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .card { background: white; border-radius: 1rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .input-group { margin-bottom: 1rem; }
+        .label-text { display: block; font-size: 0.875rem; font-weight: 500; color: #4b5563; margin-bottom: 0.25rem; }
+        
+        @media (min-width: 1024px) {
+            .sticky-panel {
+                position: sticky;
+                top: 2rem;
+                max-height: calc(100vh - 4rem);
+                overflow-y: auto;
+            }
+        }
+
+        .input-actual {
+            width: 70px;
+            padding: 4px 6px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            text-align: center;
+            background-color: #ffffff;
+        }
+        .input-actual:focus {
+            outline: none;
+            border-color: #10b981;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+        }
+
+        .btn-save-row {
+            padding: 4px 12px;
+            background-color: #10b981;
+            color: white;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-save-row:hover {
+            background-color: #059669;
+            transform: translateY(-1px);
+        }
+        .btn-save-row:active {
+            transform: translateY(0);
+        }
+
+        #saveToast {
+            transition: opacity 0.3s, transform 0.3s;
+            transform: translateY(20px) translateX(-50%);
+        }
+        #saveToast.show {
+            opacity: 1;
+            transform: translateY(0) translateX(-50%);
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">高度ダイエット・シミュレーター</h1>
+            <p class="text-slate-600 text-sm">設定値・実測データのリアルタイム保存モデル</p>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            
+            <!-- 左側：設定パネル -->
+            <div class="w-full lg:w-1/3 xl:w-1/4">
+                <div class="card p-6 sticky-panel">
+                    <h2 class="text-xl font-semibold mb-4 text-slate-700 flex items-center">
+                        <span class="mr-2">🚀</span>シミュレーション設定
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4">
+                            <div class="input-group">
+                                <label class="label-text">現在の体重 (kg)</label>
+                                <input type="number" id="currentWeight" step="0.1" class="persist-input w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold">
+                            </div>
+                            <div class="input-group">
+                                <label class="label-text">現在の体脂肪率 (%)</label>
+                                <input type="number" id="currentBodyFat" step="0.1" class="persist-input w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4">
+                            <div class="input-group">
+                                <label class="label-text">目標体重 (kg)</label>
+                                <input type="number" id="targetWeight" step="0.1" class="persist-input w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold">
+                            </div>
+                            <div class="input-group">
+                                <label class="label-text">期間 (週間)</label>
+                                <input type="number" id="durationWeeks" min="1" max="52" class="persist-input w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold">
+                            </div>
+                        </div>
+
+                        <div class="p-4 bg-blue-50 rounded-lg">
+                            <label class="label-text text-blue-800 font-bold mb-2 text-xs uppercase tracking-wider">高度なパラメータ</label>
+                            <div class="input-group">
+                                <label class="label-text text-blue-700 text-xs">筋肉量(LBM)の変化予測</label>
+                                <select id="lbmTrend" class="persist-input w-full p-2 border rounded-md bg-white text-sm">
+                                    <option value="0">維持 (現状維持)</option>
+                                    <option value="0.5">微増 (+0.5kg / 期間)</option>
+                                    <option value="1.0">増加 (+1.0kg / 期間)</option>
+                                    <option value="-1.0">減少 (-1.0kg / 筋肉減少リスク)</option>
+                                </select>
+                            </div>
+                            <div class="input-group mt-2">
+                                <label class="label-text text-blue-700 text-xs flex justify-between">
+                                    代謝適応（停滞）感度 <span id="adaptationVal">100%</span>
+                                </label>
+                                <input type="range" id="adaptationRate" min="0" max="100" value="100" class="persist-input w-full accent-blue-600">
+                                <div class="flex justify-between text-[10px] text-blue-400">
+                                    <span>なし</span>
+                                    <span>標準</span>
+                                    <span>高い</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="manualSaveBtn" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                            基本設定を保存
+                        </button>
+                    </div>
+
+                    <div id="calorieResult" class="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-100 hidden">
+                        <h3 class="text-orange-800 font-bold text-sm mb-1 text-center">🔥 1日平均目標</h3>
+                        <div id="dailyCalorie" class="text-2xl font-black text-orange-600 text-center">-0 kcal</div>
+                        <p id="calorieNote" class="text-[10px] text-orange-500 mt-2 leading-tight text-center"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右側：メイン表示パネル -->
+            <div class="w-full lg:w-2/3 xl:w-3/4 space-y-8">
+                <!-- グラフエリア -->
+                <div class="card p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-slate-700">予測 vs 実績推移</h2>
+                        <div class="flex gap-2">
+                            <span class="flex items-center text-[10px] text-slate-400"><span class="w-3 h-1 bg-blue-600 mr-1"></span>予測</span>
+                            <span class="flex items-center text-[10px] text-slate-400"><span class="w-3 h-1 bg-emerald-500 mr-1"></span>実績</span>
+                        </div>
+                    </div>
+                    <div class="relative h-64 md:h-80 lg:h-96">
+                        <canvas id="dietChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- AI 分析セクション -->
+                <div class="card p-6 border-l-8 border-indigo-500">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                        <div class="flex items-center">
+                            <span class="text-2xl mr-3">✨</span>
+                            <div>
+                                <h3 class="font-bold text-slate-800">AI 進捗分析 & アドバイス</h3>
+                                <p class="text-xs text-slate-400">実績データから停滞期の回避策を提案</p>
+                            </div>
+                        </div>
+                        <button id="aiAnalyzeBtn" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg transition shadow-md flex items-center gap-2">
+                            分析を実行
+                            <span id="aiLoading" class="hidden animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full"></span>
+                        </button>
+                    </div>
+                    <div id="adviceText" class="text-slate-600 text-sm leading-relaxed p-4 bg-slate-50 rounded-lg min-h-[50px]">
+                        実績を入力して「分析を実行」を押してください。
+                    </div>
+                </div>
+
+                <!-- 詳細テーブル -->
+                <div class="card p-6 overflow-hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-slate-700 text-sm md:text-base">週次スケジュール & 実測入力</h2>
+                        <div class="flex gap-4">
+                            <button id="resetSettingsBtn" class="text-[10px] text-slate-400 hover:text-blue-500 transition">設定リセット</button>
+                            <button id="clearActualsBtn" class="text-[10px] text-slate-400 hover:text-red-500 transition">記録を全消去</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm border-collapse min-w-[800px]">
+                            <thead>
+                                <tr class="border-b-2 border-slate-100 bg-slate-50">
+                                    <th class="py-3 px-2 text-slate-500 font-medium">日付</th>
+                                    <th class="py-3 px-2 text-slate-500 font-medium">週</th>
+                                    <th class="py-3 px-2 text-slate-800 font-bold border-l">予測体重</th>
+                                    <th class="py-3 px-2 text-slate-800 font-bold">予測BF%</th>
+                                    <th class="py-3 px-2 text-emerald-700 font-bold border-l bg-emerald-50">実測体重</th>
+                                    <th class="py-3 px-2 text-emerald-700 font-bold bg-emerald-50">実測BF%</th>
+                                    <th class="py-3 px-2 text-center bg-emerald-50">操作</th>
+                                    <th class="py-3 px-2 text-slate-800 font-bold border-l text-right">停滞リスク</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 保存トースト -->
+    <div id="saveToast" class="fixed bottom-8 left-1/2 bg-slate-800 text-white px-6 py-2 rounded-full shadow-2xl opacity-0 pointer-events-none flex items-center gap-2 z-50">
+        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        <span id="toastMsg" class="text-xs font-bold">データを保存しました</span>
+    </div>
+
+    <script>
+        const apiKey = ""; 
+        let chart = null;
+        const KCAL_PER_KG = 7200;
+        const START_DATE = new Date();
+        
+        const DEFAULTS = {
+            currentWeight: 99.0,
+            currentBodyFat: 33.0,
+            targetWeight: 80.0,
+            durationWeeks: 24,
+            lbmTrend: "0",
+            adaptationRate: 100
+        };
+
+        const STORAGE_KEYS = {
+            SETTINGS: 'diet_settings_final_v1',
+            ACTUALS: 'diet_actuals_final_v1'
+        };
+
+        let actualData = {};
+        let settingsData = JSON.parse(JSON.stringify(DEFAULTS));
+
+        function loadFromStorage() {
+            try {
+                const s = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+                if (s) settingsData = JSON.parse(s);
+                
+                const a = localStorage.getItem(STORAGE_KEYS.ACTUALS);
+                if (a) actualData = JSON.parse(a);
+            } catch (e) { console.warn(e); }
+        }
+
+        function saveToStorage(key, data) {
+            try {
+                localStorage.setItem(key, JSON.stringify(data));
+                return true;
+            } catch (e) { return false; }
+        }
+
+        function showToast(msg = "保存しました") {
+            const toast = document.getElementById('saveToast');
+            document.getElementById('toastMsg').innerText = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        function applySettingsToUI() {
+            document.getElementById('currentWeight').value = settingsData.currentWeight;
+            document.getElementById('currentBodyFat').value = settingsData.currentBodyFat;
+            document.getElementById('targetWeight').value = settingsData.targetWeight;
+            document.getElementById('durationWeeks').value = settingsData.durationWeeks;
+            document.getElementById('lbmTrend').value = settingsData.lbmTrend;
+            document.getElementById('adaptationRate').value = settingsData.adaptationRate;
+            document.getElementById('adaptationVal').innerText = settingsData.adaptationRate + '%';
+        }
+
+        function saveAllSettings() {
+            settingsData = {
+                currentWeight: parseFloat(document.getElementById('currentWeight').value) || DEFAULTS.currentWeight,
+                currentBodyFat: parseFloat(document.getElementById('currentBodyFat').value) || DEFAULTS.currentBodyFat,
+                targetWeight: parseFloat(document.getElementById('targetWeight').value) || DEFAULTS.targetWeight,
+                durationWeeks: parseInt(document.getElementById('durationWeeks').value) || DEFAULTS.durationWeeks,
+                lbmTrend: document.getElementById('lbmTrend').value,
+                adaptationRate: parseInt(document.getElementById('adaptationRate').value)
+            };
+            saveToStorage(STORAGE_KEYS.SETTINGS, settingsData);
+            document.getElementById('adaptationVal').innerText = settingsData.adaptationRate + '%';
+            calculate();
+        }
+
+        function calculate() {
+            if (typeof Chart === 'undefined') return;
+
+            const { currentWeight: currentW, currentBodyFat: currentBF, targetWeight: targetW, durationWeeks: weeks, lbmTrend, adaptationRate } = settingsData;
+            const lbmChangeTotal = parseFloat(lbmTrend);
+            const adaptationSensitivity = (adaptationRate || 0) / 100;
+
+            const initialFatKg = currentW * (currentBF / 100);
+            const initialLbm = currentW - initialFatKg;
+            const targetTotalLoss = currentW - targetW;
+
+            const data = [];
+            let totalWeightUsed = 0;
+            let weights = [];
+            
+            for (let i = 0; i < weeks; i++) {
+                const efficiency = 1 - (i / weeks) * 0.3 * adaptationSensitivity;
+                weights.push(efficiency);
+                totalWeightUsed += efficiency;
+            }
+
+            for (let i = 0; i <= weeks; i++) {
+                let weight, lbm, fatKg;
+                if (i === 0) {
+                    weight = currentW;
+                    lbm = initialLbm;
+                    fatKg = initialFatKg;
+                } else {
+                    let currentSum = 0;
+                    for(let j=0; j<i; j++) currentSum += weights[j];
+                    weight = currentW - (targetTotalLoss * (currentSum / totalWeightUsed));
+                    lbm = initialLbm + (lbmChangeTotal * (i / weeks));
+                    fatKg = weight - lbm;
+                }
+
+                const bfPercent = (fatKg / weight) * 100;
+                const rowDate = new Date(START_DATE);
+                rowDate.setDate(START_DATE.getDate() + (i * 7));
+                const risk = i === 0 ? 0 : Math.min(100, (i / weeks * 50) + (adaptationSensitivity * 50));
+
+                data.push({
+                    date: `${rowDate.getMonth() + 1}/${rowDate.getDate()}`,
+                    week: i,
+                    weight: weight.toFixed(1),
+                    bfPercent: Math.max(0, bfPercent).toFixed(1),
+                    lbm: lbm.toFixed(1),
+                    risk: Math.round(risk),
+                    actualWeight: actualData[i]?.w || null,
+                    actualBF: actualData[i]?.bf || null
+                });
+            }
+
+            updateTable(data);
+            updateChart(data);
+            updateCalorie(targetTotalLoss, weeks, adaptationSensitivity);
+        }
+
+        function updateCalorie(loss, weeks, sensitivity) {
+            const calorieResult = document.getElementById('calorieResult');
+            if (loss <= 0) { calorieResult.classList.add('hidden'); return; }
+            calorieResult.classList.remove('hidden');
+
+            const totalKcal = loss * KCAL_PER_KG;
+            const avgDaily = totalKcal / (weeks * 7);
+            const peakDaily = avgDaily * (1 + (0.2 * sensitivity));
+
+            document.getElementById('dailyCalorie').innerText = `-${Math.round(avgDaily).toLocaleString()} kcal`;
+            document.getElementById('calorieNote').innerText = `※停滞期には最大 -${Math.round(peakDaily).toLocaleString()}kcal 相当の調整が必要です。`;
+        }
+
+        window.saveActualRow = function(week) {
+            const wVal = parseFloat(document.getElementById(`actualWeight_${week}`).value) || null;
+            const bfVal = parseFloat(document.getElementById(`actualBF_${week}`).value) || null;
+
+            if (wVal === null && bfVal === null) {
+                delete actualData[week];
+            } else {
+                actualData[week] = { w: wVal, bf: bfVal };
+            }
+            
+            if(saveToStorage(STORAGE_KEYS.ACTUALS, actualData)) {
+                calculate();
+                showToast(`${week}週目の実績を保存しました`);
+            }
+        };
+
+        function updateTable(data) {
+            const tbody = document.getElementById('resultsTableBody');
+            tbody.innerHTML = '';
+            
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-50 hover:bg-slate-50 transition";
+                const riskColor = row.risk > 70 ? 'text-red-500' : (row.risk > 40 ? 'text-orange-400' : 'text-green-400');
+                
+                tr.innerHTML = `
+                    <td class="py-3 px-2 text-slate-400 font-mono text-xs">${row.date}</td>
+                    <td class="py-3 px-2 text-slate-600">${row.week === 0 ? '開始' : row.week + '週'}</td>
+                    <td class="py-3 px-2 font-bold text-blue-700 border-l">${row.weight} <span class="text-[10px] font-normal text-slate-300">kg</span></td>
+                    <td class="py-3 px-2 font-semibold text-pink-500">${row.bfPercent} <span class="text-[10px] font-normal text-slate-300">%</span></td>
+                    <td class="py-3 px-2 border-l bg-emerald-50">
+                        <input type="number" step="0.1" id="actualWeight_${row.week}" class="input-actual" value="${row.actualWeight || ''}" placeholder="--">
+                    </td>
+                    <td class="py-3 px-2 bg-emerald-50">
+                        <input type="number" step="0.1" id="actualBF_${row.week}" class="input-actual" value="${row.actualBF || ''}" placeholder="--">
+                    </td>
+                    <td class="py-3 px-2 bg-emerald-50 text-center">
+                        <button onclick="window.saveActualRow(${row.week})" class="btn-save-row">保存</button>
+                    </td>
+                    <td class="py-3 px-2 text-right ${riskColor} font-mono text-xs border-l">${row.risk}%</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateChart(data) {
+            const ctx = document.getElementById('dietChart').getContext('2d');
+            if (chart) chart.destroy();
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.week + '週'),
+                    datasets: [
+                        {
+                            label: '予測体重',
+                            data: data.map(d => d.weight),
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                            fill: true, yAxisID: 'y', tension: 0.3, pointRadius: 0
+                        },
+                        {
+                            label: '実測体重',
+                            data: data.map(d => d.actualWeight),
+                            borderColor: '#10b981',
+                            backgroundColor: '#10b981',
+                            pointRadius: 4, showLine: true, yAxisID: 'y', spanGaps: true
+                        },
+                        {
+                            label: '予測BF%',
+                            data: data.map(d => d.bfPercent),
+                            borderColor: '#db2777',
+                            borderDash: [5, 5], yAxisID: 'yBF', tension: 0.3, pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 10 } } } },
+                    scales: {
+                        y: { type: 'linear', position: 'left' },
+                        yBF: { type: 'linear', position: 'right', grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        async function analyzeAI() {
+            const btn = document.getElementById('aiAnalyzeBtn');
+            const loader = document.getElementById('aiLoading');
+            const adviceBox = document.getElementById('adviceText');
+
+            btn.disabled = true; loader.classList.remove('hidden'); adviceBox.innerText = "分析中...";
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: `ダイエットデータ分析アドバイス(日本語150文字): 設定=${JSON.stringify(settingsData)}, 実績=${JSON.stringify(actualData)}` }] }] })
+                });
+                const result = await response.json();
+                adviceBox.innerText = result.candidates?.[0]?.content?.parts?.[0]?.text || "分析に失敗しました。";
+            } catch (err) {
+                adviceBox.innerText = "エラーが発生しました。";
+            } finally {
+                btn.disabled = false; loader.classList.add('hidden');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFromStorage();
+            applySettingsToUI();
+            calculate();
+
+            document.querySelectorAll('.persist-input').forEach(input => {
+                input.addEventListener('change', saveAllSettings);
+            });
+
+            document.getElementById('manualSaveBtn').addEventListener('click', () => {
+                saveAllSettings(); showToast("設定を保存しました");
+            });
+
+            document.getElementById('aiAnalyzeBtn').addEventListener('click', analyzeAI);
+
+            document.getElementById('resetSettingsBtn').addEventListener('click', () => {
+                if(confirm('リセットしますか？')) {
+                    settingsData = JSON.parse(JSON.stringify(DEFAULTS));
+                    saveToStorage(STORAGE_KEYS.SETTINGS, settingsData);
+                    applySettingsToUI(); calculate();
+                }
+            });
+
+            document.getElementById('clearActualsBtn').addEventListener('click', () => {
+                if(confirm('記録を全消去しますか？')) {
+                    actualData = {}; saveToStorage(STORAGE_KEYS.ACTUALS, actualData); calculate();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
